@@ -180,12 +180,6 @@ class Regressor(Evaluator):
         return self.last_train_r2
 
 
-
-
-
-
-
-
 class MultiClassClassifier(Evaluator):
 
     def __init__(self, X, y, test_size=0.2, random_state=42, cv=False):

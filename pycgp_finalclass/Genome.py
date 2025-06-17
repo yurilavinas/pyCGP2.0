@@ -78,12 +78,17 @@ class CGPGenome: #This class contains every function that apply directly to the 
     #used to display the genome in an understandable way
     def to_function_string(self):
         func_str = ""
+
+        # Generate the function string for each node
         for node in self.nodes:
             inputs = [f"x{idx}" if idx < self.config.num_inputs else f"n{idx}" for idx in node.inputs]
             func = node.Func.name
             func_str += f"n{node.index} = {func}({', '.join(inputs)})\n"
-        func_str += f"Output: n{self.outputs[0]}\n\n"
 
+        # Show output references
+        func_str += "Outputs: " + ", ".join([f"n{idx}" for idx in self.outputs]) + "\n\n"
+
+        # Helper to recursively unroll a node
         def unroll_node(idx):
             if idx < self.config.num_inputs:
                 return f"x{idx}"
@@ -93,17 +98,21 @@ class CGPGenome: #This class contains every function that apply directly to the 
                 args = [unroll_node(i) for i in node.inputs]
                 return f"{func}({', '.join(args)})"
 
-        output_expr = unroll_node(self.outputs[0])
-        func_str += "Unrolled output expression:\n" + output_expr
+        # Unroll all outputs
+        for i, out_idx in enumerate(self.outputs):
+            output_expr = unroll_node(out_idx)
+            func_str += f"Unrolled output expression {i}:\n{output_expr}\n"
+
         return func_str
 
 
-    #Renvoie une liste de noeufs actifs (noeuds connectés aux outputs)
+
+    #Get a list of nodes connected to the outputs(including the outputs)
     def get_active_nodes(self):
-        # Créer un dictionnaire index -> Node pour accès rapide
+        # Create a node dictionary for quick access
         index_to_node = {node.index: node for node in self.nodes}
 
-        # Commencer avec les indices des sorties
+        # start with the output nodes
         active_indices = set(self.outputs)
         changed = True
 
@@ -112,19 +121,19 @@ class CGPGenome: #This class contains every function that apply directly to the 
             for node_idx in list(active_indices):
                 node = index_to_node.get(node_idx)
                 if node is None:
-                    # Si on a un index invalide, on ignore (sécurité)
+                    # if the node is not found, skip it
                     continue
                 for input_idx in node.inputs:
-                    # Si c'est une connexion vers un noeud interne non encore marqué comme actif
+                    # if the node is not active, add it to the active set
                     if input_idx >= self.config.num_inputs and input_idx not in active_indices:
                         if input_idx in index_to_node:
                             active_indices.add(input_idx)
                             changed = True
                         else:
-                            # Optionnel : alerte de debug si une entrée ne correspond à aucun Node
+                            # debug
                             print(f"[WARNING] input_idx {input_idx} not found in nodes.")
 
-        # Retourner les noeud actifs dans l'ordre croissant de leur index
+        # return actives nodes sorted by index
         active_nodes = [index_to_node[i] for i in active_indices if i in index_to_node]
         active_nodes.sort(key=lambda node: node.index)
 
@@ -146,14 +155,14 @@ class CGPGenome: #This class contains every function that apply directly to the 
         layer_spacing = 3.0
         vertical_spacing = 1.5
 
-        # STEP 1 — Get active input node indices
+        # Get active input node indices
         active_input_indices = set()
         for node in active_nodes:
             for input_idx in node.inputs:
                 if input_idx < self.config.num_inputs:
                     active_input_indices.add(input_idx)
 
-        # STEP 2 — Add only active input nodes
+        #  Add active input nodes to graph
         active_input_indices = sorted(active_input_indices)
         for i, idx in enumerate(active_input_indices):
             label = f"x{idx}"
@@ -163,7 +172,7 @@ class CGPGenome: #This class contains every function that apply directly to the 
             labels[label] = label
             G.add_node(label, color='lightblue')
 
-        # STEP 3 — Add internal nodes
+        #  Add internal nodes
         internal_nodes = [node for node in active_nodes if node.index not in self.outputs]
         for i, node in enumerate(internal_nodes):
             label = f"n{node.index}\n{node.Func.name}"
@@ -173,7 +182,7 @@ class CGPGenome: #This class contains every function that apply directly to the 
             labels[label] = label
             G.add_node(label, color='lightgreen')
 
-        # STEP 4 — Add output nodes (only if active)
+        # Add output nodes
         for i, idx in enumerate(active_output_indices):
             node = self.nodes[idx - self.config.num_inputs]
             label = f"n{idx}\n{node.Func.name}"
@@ -183,7 +192,7 @@ class CGPGenome: #This class contains every function that apply directly to the 
             labels[label] = label
             G.add_node(label, color='orange')
 
-        # STEP 5 — Add edges
+        # Add edges
         for node in active_nodes:
             target_label = f"n{node.index}\n{node.Func.name}"
             for input_idx in node.inputs:
@@ -196,10 +205,10 @@ class CGPGenome: #This class contains every function that apply directly to the 
                     input_label = f"n{input_idx}\n{src_node.Func.name}"
                 G.add_edge(input_label, target_label)
 
-        # STEP 6 — Draw the graph
+        # Draw the graph
         node_colors = [G.nodes[n].get('color', 'gray') for n in G.nodes]
         nx.draw(G, pos, with_labels=True, labels=labels,
-                node_color=node_colors, node_size=1500,
+                node_color=node_colors, node_size=1000,
                 font_size=8, arrows=True, edge_color='gray')
 
         plt.title("Active Genome Graph (Inputs → Internals → Outputs)")

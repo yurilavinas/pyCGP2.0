@@ -51,6 +51,10 @@ class ES: #Evolution strategy
                 best_fitness = scored_population[0][1]
                 best_genome = scored_population[0][0].copy() #deepcopy to avoid mutating best_genome
                 no_improvement = 0
+                if verbose:
+                    # Print the top individual function string
+                    print(f"\nBest fitness this generation: {best_fitness:.4f}")
+                    print(best_genome.to_function_string())
             else:
                 no_improvement += 1
 
@@ -58,10 +62,7 @@ class ES: #Evolution strategy
                 print(f"Early stopping at generation {generation} (no improvement for {early_stopping} generations).")
                 break
 
-            if verbose:
-            # Print the top individual function string
-                print(f"\nBest fitness this generation: {best_fitness:.4f}")
-                print(best_genome.to_function_string())
+
             
 
         print(f"\nBest fitness achieved: {best_fitness:.4f}")

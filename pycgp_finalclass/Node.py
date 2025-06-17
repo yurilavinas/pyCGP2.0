@@ -35,6 +35,10 @@ class Node:
             self.inputs.extend([random.randint(0, node_index-1) for _ in range(new_func.arity - old_func.arity)])
         elif new_func.arity < old_func.arity:
             self.inputs = self.inputs[:new_func.arity]
+        if new_func.const_params > 0:
+            self.const_params = [random.uniform(-1, 1) for _ in range(new_func.const_params)]
+        else:
+            self.const_params = []
 
     #Mutate the input of the node to either an input node or an internal node
     def mutate_inputs(self, num_inputs, node_index, input_node_mutation_rate): 
