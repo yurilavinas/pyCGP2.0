@@ -144,75 +144,103 @@ class CGPGenome: #This class contains every function that apply directly to the 
         import networkx as nx
         import matplotlib.pyplot as plt
 
+        def compute_node_depths(active_nodes, num_inputs):
+            depths = {}
+            node_map = {node.index: node for node in active_nodes}
+
+            def get_depth(index):
+                if index < num_inputs:
+                    return 0
+                if index in depths:
+                    return depths[index]
+                node = node_map[index]
+                input_depths = [get_depth(i) for i in node.inputs if i < num_inputs or i in node_map]
+                d = 1 + (max(input_depths) if input_depths else 0)
+                depths[index] = d
+                return d
+
+            for node in active_nodes:
+                get_depth(node.index)
+
+            return depths
+
         active_nodes = self.get_active_nodes()
         active_node_indices = {node.index for node in active_nodes}
-        active_output_indices = [idx for idx in self.outputs if idx in active_node_indices]
+        active_output_indices = [idx for idx in self.outputs if idx in active_node_indices or idx < self.config.num_inputs]
 
         G = nx.DiGraph()
         pos = {}
         labels = {}
 
         layer_spacing = 3.0
-        vertical_spacing = 1.5
+        vertical_spacing = 2.0
 
-        # Get active input node indices
-        active_input_indices = set()
-        for node in active_nodes:
-            for input_idx in node.inputs:
-                if input_idx < self.config.num_inputs:
-                    active_input_indices.add(input_idx)
-
-        #  Add active input nodes to graph
-        active_input_indices = sorted(active_input_indices)
+        # --- INPUT NODES ---
+        active_input_indices = sorted({i for node in active_nodes for i in node.inputs if i < self.config.num_inputs})
         for i, idx in enumerate(active_input_indices):
-            label = f"x{idx}"
+            node_id = f"x{idx}"
             x = 0
             y = -i * vertical_spacing + (len(active_input_indices) - 1) * vertical_spacing / 2
-            pos[label] = (x, y)
-            labels[label] = label
-            G.add_node(label, color='lightblue')
+            pos[node_id] = (x, y)
+            labels[node_id] = node_id
+            G.add_node(node_id, color='lightblue')
 
-        #  Add internal nodes
-        internal_nodes = [node for node in active_nodes if node.index not in self.outputs]
-        for i, node in enumerate(internal_nodes):
-            label = f"n{node.index}\n{node.Func.name}"
-            x = layer_spacing
-            y = -i * vertical_spacing + (len(internal_nodes) - 1) * vertical_spacing / 2
-            pos[label] = (x, y)
-            labels[label] = label
-            G.add_node(label, color='lightgreen')
-
-        # Add output nodes
-        for i, idx in enumerate(active_output_indices):
-            node = self.nodes[idx - self.config.num_inputs]
-            label = f"n{idx}\n{node.Func.name}"
-            x = 2 * layer_spacing
-            y = -i * vertical_spacing + (len(active_output_indices) - 1) * vertical_spacing / 2
-            pos[label] = (x, y)
-            labels[label] = label
-            G.add_node(label, color='orange')
-
-        # Add edges
+        # --- INTERNAL NODES by DEPTH ---
+        depths = compute_node_depths(active_nodes, self.config.num_inputs)
+        depth_groups = {}
         for node in active_nodes:
-            target_label = f"n{node.index}\n{node.Func.name}"
+            d = depths[node.index]
+            depth_groups.setdefault(d, []).append(node)
+
+        sorted_depths = sorted(depth_groups.keys())
+        max_depth = max(sorted_depths)
+
+        for d in sorted_depths:
+            nodes_at_depth = depth_groups[d]
+            for i, node in enumerate(nodes_at_depth):
+                node_id = f"n{node.index}"
+                x = (d + 1) * layer_spacing  # internal nodes start at x=1
+                y = -i * vertical_spacing + (len(nodes_at_depth) - 1) * vertical_spacing / 2
+                pos[node_id] = (x, y)
+                labels[node_id] = f"n{node.index}\n{node.Func.name}"
+                G.add_node(node_id, color='lightgreen')
+
+        # --- OUTPUT NODES ---
+        for i, idx in enumerate(active_output_indices):
+            output_id = f"out{i}"
+            x = (max_depth + 2) * layer_spacing  # outputs are after last depth
+            y = -i * vertical_spacing + (len(active_output_indices) - 1) * vertical_spacing / 2
+            pos[output_id] = (x, y)
+            labels[output_id] = f"y{i}"
+            G.add_node(output_id, color='orange')
+
+            # Link output to its source
+            if idx < self.config.num_inputs:
+                G.add_edge(f"x{idx}", output_id)
+            else:
+                G.add_edge(f"n{idx}", output_id)
+
+        # --- EDGES from inputs/internals to internal nodes ---
+        for node in active_nodes:
+            target_id = f"n{node.index}"
             for input_idx in node.inputs:
                 if input_idx < self.config.num_inputs:
-                    input_label = f"x{input_idx}"
+                    source_id = f"x{input_idx}"
+                elif input_idx in active_node_indices:
+                    source_id = f"n{input_idx}"
                 else:
-                    if input_idx not in active_node_indices:
-                        continue  # skip inactive internal nodes
-                    src_node = self.nodes[input_idx - self.config.num_inputs]
-                    input_label = f"n{input_idx}\n{src_node.Func.name}"
-                G.add_edge(input_label, target_label)
+                    continue  # skip inactive nodes
+                G.add_edge(source_id, target_id)
 
-        # Draw the graph
+        # --- DRAW ---
         node_colors = [G.nodes[n].get('color', 'gray') for n in G.nodes]
         nx.draw(G, pos, with_labels=True, labels=labels,
-                node_color=node_colors, node_size=1000,
+                node_color=node_colors, node_size=500,
                 font_size=8, arrows=True, edge_color='gray')
 
-        plt.title("Active Genome Graph (Inputs → Internals → Outputs)")
+        plt.title("Active Genome Graph (Inputs → Internal → Outputs)")
         plt.axis('off')
         plt.tight_layout()
         plt.show()
+
 
