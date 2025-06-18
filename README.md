@@ -5,5 +5,6 @@ make sure to install the dependencies with
 `pip install -r requirements.txt`
 ## Tutorial: Evolving a CGP for Regression using PMLB Dataset
 This tutorial show a simple use of pycgp for a regression problem using evolution strategy (1 + λ)
+
 Check out the full tutorial in [Tutorial.ipynb](./Tutorial.ipynb).
 
