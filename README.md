@@ -8,3 +8,4 @@ This tutorial show a simple use of pycgp for a regression problem using evolutio
 
 Check out the full tutorial in [Tutorial.ipynb](./Tutorial.ipynb).
 
+You can find the list of datasets used to test this algorithm on the [Github of PMLB](https://github.com/EpistasisLab/pmlb/blob/master/pmlb/all_summary_stats.tsv)
