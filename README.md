@@ -16,9 +16,6 @@ By running [Tutorial.ipynb](./Tutorial.ipynb) You can see:
 
 - The detail of the best genome and the R2 score/fitness of it:
 ```
-Starting fitness -5.3810
-Early stopping at generation 1735 (no improvement for 1000 generations).
-
 Best fitness achieved: 0.4417
 n4 = sqrtxy(x1, x3)
 n5 = acos(n4)
