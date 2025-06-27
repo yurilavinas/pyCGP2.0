@@ -75,7 +75,12 @@ def f_max(args, const_params):
     return np.max(args)
 
 def f_round(args, const_params):
-    return round(args[0])
+    try:
+        r = round(args[0])
+    except Exception as e:
+        print(f"Error in rounding: {e}, args: {args}")
+        r = args[0]  # Fallback to original value
+    return r
 
 def f_floor(args, const_params):
     return math.floor(args[0])

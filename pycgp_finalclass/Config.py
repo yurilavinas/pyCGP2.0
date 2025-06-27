@@ -11,7 +11,7 @@ class CGPConfig(Config): #this is the class where we tune our main parameters
                   const_min,const_max,function_set) :
         self.num_inputs = num_inputs # Number of inputs nodes
         self.num_nodes = num_nodes # size of our graph
-        self.num_outputs = num_outputs #most of the time equal to 1
+        self.num_outputs = num_outputs #num of outputs (equal to 1 if 2 classes else equal to the number of classes)
         self.const_min = const_min #The range of our constants
         self.const_max = const_max
         self.function_set = function_set #our list of function that we define in the main
