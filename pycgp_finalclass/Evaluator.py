@@ -15,33 +15,61 @@ class Evaluator(ABC): #Abstract class for evaluator
 
 class Binary_Regressor(Evaluator):
     def __init__(self, X, y, test_size=0.2, random_state=42, cv=False):
+        # Train/test split
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
             X, y, test_size=test_size, random_state=random_state
         )
-        self.cv = cv
-        self.last_train_r2 = 0.0
-        self.last_test_r2 = 0.0
+        self.last_train_r2 = -np.inf
+        self.last_test_r2 = -np.inf
+        self.cv = cv  # Whether to use cross-validation
+        
+    def safe_predictions(self, preds):
+        preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
+        preds = np.clip(preds, -1e6, 1e6)  # clip to avoid extremely large values
+        return preds
 
     def evaluate(self, genome):
-        if self.cv:
-            return self.evaluate_cv(genome, k=5)
-        else:
-            return self.evaluate_no_cv(genome)
+        return self.evaluate_cv(genome, k=5) if self.cv else self.evaluate_no_cv(genome)
 
     def evaluate_no_cv(self, genome):
         # Predict on training set
-        train_preds = [genome.get_value(x) for x in self.X_train]
-        train_preds = np.array(train_preds).flatten()
+        train_preds = [genome.get_value(x)[0] for x in self.X_train]
+        train_preds = self.safe_predictions(train_preds)
         y_train_flat = np.array(self.y_train).flatten()
         self.last_train_r2 = r2_score(y_train_flat, train_preds)
 
         # Predict on test set
-        test_preds = [genome.get_value(x) for x in self.X_test]
-        test_preds = np.array(test_preds).flatten()
+        test_preds = [genome.get_value(x)[0] for x in self.X_test]
+        test_preds = self.safe_predictions(test_preds)
         y_test_flat = np.array(self.y_test).flatten()
         self.last_test_r2 = r2_score(y_test_flat, test_preds)
 
+        # Return test R² as fitness (higher is better)
         return self.last_test_r2
+
+    def evaluate_cv(self, genome, k=5):
+        kf = KFold(n_splits=k, shuffle=True, random_state=42)
+        self.X_train = np.array(self.X_train)
+        self.y_train = np.array(self.y_train)
+
+        r2_scores = []
+        for train_index, test_index in kf.split(self.X_train):
+            X_fold_train = self.X_train[train_index]
+            y_fold_train = self.y_train[train_index]
+            X_fold_test = self.X_train[test_index]
+            y_fold_test = self.y_train[test_index]
+
+            fold_preds = [genome.get_value(x)[0] for x in X_fold_test]
+            fold_preds = self.safe_predictions(fold_preds)            
+            y_fold_test = y_fold_test.flatten()
+            r2 = r2_score(y_fold_test, fold_preds)
+            r2_scores.append(r2)
+
+        mean_r2 = np.mean(r2_scores)
+        self.last_train_r2 = mean_r2
+        self.last_test_r2 = mean_r2  # Optional: could still keep a true test set
+
+        return mean_r2
 
 class Regressor(Evaluator):
 
@@ -192,7 +220,6 @@ class EvaluatorSin(Evaluator): #Evaluator for the sin function
         return r2
     
 
-#IN DEVELOPMENT
 class Binary_Classifier(Evaluator):
 
     def __init__(self, X, y, test_size=0.2, random_state=42, threshold=0.5, cv = False):

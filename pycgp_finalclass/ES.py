@@ -8,34 +8,37 @@ from datetime import datetime
 import copy
 import os
 import pickle
+from tqdm import trange  # or tqdm if you want more control
 
 class ES: #Evolution strategy
-    def __init__(self, evaluator, lam,parent,mutation): 
+    def __init__(self, evaluator, lam,parent_factory,mutation): 
         self.evaluator = evaluator
         self.lam = lam #offspring population size
-        self.parent = parent
+        self.parent_factory = parent_factory
         self.mutation = mutation
     
     #evolving process: evolve n time and stopping at a certain point without improvement
-    def evolve(self, n_generations, early_stopping,project_name= "ES_run", verbose=False): #Put true in verbose to see prints
-        parent = self.parent
-        best_genome = self.parent #deepcopy to avoid mutating best_genome
+    def evolve(self, n_generations, early_stopping,early_switch,project_name= "ES_run", verbose=False): #Put true in verbose to see prints
+        parent = self.parent_factory()
+        oui = parent.to_function_string() #to see the function string of the parent genome
+        used_genome = parent.copy() #deepcopy to avoid mutating best_genome
+        best_genome = used_genome.copy() #deepcopy to avoid mutating best_genome
         best_fitness = self.evaluator.evaluate(parent) #start from the lowest value possible
         print(f"Starting fitness {best_fitness:.4f}")
         no_improvement = 0
+        no_switch = 0
         
         # List to track best fitness per generation
         fitness_history = []
         mean_std_history = []
         evaluation_count = 0    
 
-        for generation in range(n_generations):
-            if verbose:
-                print(f"Generation {generation}")
+        pbar = trange(n_generations, desc="Evolving", unit="gen", disable=not verbose)
+
+        for generation in pbar:
             offspring = []
             for i in range(self.lam):
-                parent = best_genome.copy() #deepcopy to avoid mutating best_genome
-                child = parent.copy()
+                child = used_genome.copy()
                 self.mutation.mutate(child)
                 offspring.append(child)
                 
@@ -65,16 +68,22 @@ class ES: #Evolution strategy
             if scored_population[0][1] > best_fitness:
                 best_fitness = scored_population[0][1]
                 best_genome = scored_population[0][0].copy() #deepcopy to avoid mutating best_genome
+                used_genome = best_genome.copy()  # Update the used genome to the best found
                 no_improvement = 0
+                no_switch = 0
                 if verbose:
                     # Print the top individual function string
-                    print(f"\nBest fitness this generation: {best_fitness:.4f}")
-                    print(best_genome.to_function_string())
+                    pbar.set_description(f"Gen {generation} | Best: {best_fitness:.4f}")
             else:
                 no_improvement += 1
-
+                no_switch += 1
+            if no_switch >= early_switch:
+                used_genome = self.parent_factory()
+                no_switch = 0
+                if used_genome.to_function_string() != oui:
+                    print("different genome")
             if no_improvement >= early_stopping:
-                print(f"Early stopping at generation {generation} (no improvement for {early_stopping} generations).")
+                pbar.set_description(f"Early Stop at Gen {generation}")
                 break
 
         # Final output

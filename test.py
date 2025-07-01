@@ -97,7 +97,7 @@ def sample_es(sample_genome, evaluator, mutation):
     return ES(
         evaluator=evaluator,
         lam=4,
-        parent=sample_genome,
+        parent=lambda: sample_genome,
         mutation=mutation,
     )
 
