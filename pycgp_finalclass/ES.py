@@ -9,36 +9,41 @@ import copy
 import os
 import pickle
 from tqdm import trange  # or tqdm if you want more control
+import seaborn as sns
 
 class ES: #Evolution strategy
-    def __init__(self, evaluator, lam,parent_factory,mutation): 
+    def __init__(self, evaluator, lam,parent_factory,mutation,config): 
         self.evaluator = evaluator
         self.lam = lam #offspring population size
         self.parent_factory = parent_factory
         self.mutation = mutation
+        self.config = config
     
     #evolving process: evolve n time and stopping at a certain point without improvement
     def evolve(self, n_generations, early_stopping,early_switch,project_name= "ES_run", verbose=False): #Put true in verbose to see prints
         parent = self.parent_factory()
-        oui = parent.to_function_string() #to see the function string of the parent genome
-        used_genome = parent.copy() #deepcopy to avoid mutating best_genome
-        best_genome = used_genome.copy() #deepcopy to avoid mutating best_genome
-        best_fitness = self.evaluator.evaluate(parent) #start from the lowest value possible
-        print(f"Starting fitness {best_fitness:.4f}")
-        no_improvement = 0
-        no_switch = 0
+        current_genome = parent.copy() #deepcopy to avoid mutating best_genome
+        best_genome = current_genome.copy() #deepcopy to avoid mutating best_genome
+        best_train_fitness = self.evaluator.evaluate(parent)[0] #start from the lowest value possible
+        best_test_fitness = self.evaluator.evaluate(parent)[1]
+        print(f"Starting fitness {best_train_fitness:.4f}")
+        num_improvement = 0
+        num_switch = 0
         
         # List to track best fitness per generation
         fitness_history = []
-        mean_std_history = []
-        evaluation_count = 0    
+        evaluation_count = 0
+
+        cumulative_usage = [0] * self.config.num_inputs  # cumulative counter
+        feature_usage_over_time = []  # List of dicts: one per generation
+    
 
         pbar = trange(n_generations, desc="Evolving", unit="gen", disable=not verbose)
 
         for generation in pbar:
             offspring = []
             for i in range(self.lam):
-                child = used_genome.copy()
+                child = current_genome.copy()
                 self.mutation.mutate(child)
                 offspring.append(child)
                 
@@ -48,67 +53,64 @@ class ES: #Evolution strategy
             generation_fitnesses = []
             for genome in offspring:
                 #dont need to evalua
-                fitness = self.evaluator.evaluate(genome) # put the number of generations
-                scored_population.append((genome, fitness))
+                train_fitness, test_fitness = self.evaluator.evaluate(genome)
+                scored_population.append((genome, train_fitness,test_fitness))
+
                 #for fitness plotting
                 evaluation_count += 1
-                generation_fitnesses.append(fitness)
-                fitness_history.append((evaluation_count, best_fitness))
+                generation_fitnesses.append(train_fitness)
+                fitness_history.append((evaluation_count, best_train_fitness,best_test_fitness))
 
             # Sort the population based on fitness
             scored_population.sort(key=lambda x: x[1], reverse=True)
 
-            mean_std_history.append((
-                evaluation_count, 
-                np.mean(generation_fitnesses), 
-                np.std(generation_fitnesses)
-            ))
 
             # Update best genome if fitness improves
-            if scored_population[0][1] > best_fitness:
-                best_fitness = scored_population[0][1]
+            if scored_population[0][1] > best_train_fitness:
+                best_train_fitness = scored_population[0][1]
+                best_test_fitness = scored_population[0][2]
                 best_genome = scored_population[0][0].copy() #deepcopy to avoid mutating best_genome
-                used_genome = best_genome.copy()  # Update the used genome to the best found
-                no_improvement = 0
-                no_switch = 0
+                current_genome = best_genome.copy()  # Update the used genome to the best found
+
+                used_input_counts = self.get_used_input_features(best_genome)
+                cumulative_usage = [cumul + used for cumul, used in zip(cumulative_usage, used_input_counts)]
+                feature_usage_over_time.append(cumulative_usage.copy())  # snapshot of current state
+
+                num_improvement = 0
+                num_switch = 0
                 if verbose:
                     # Print the top individual function string
-                    pbar.set_description(f"Gen {generation} | Best: {best_fitness:.4f}")
+                    pbar.set_description(f"Gen {generation} | Best: {best_train_fitness:.4f}")
             else:
-                no_improvement += 1
-                no_switch += 1
-            if no_switch >= early_switch:
-                used_genome = self.parent_factory()
-                no_switch = 0
-                if used_genome.to_function_string() != oui:
-                    print("different genome")
-            if no_improvement >= early_stopping:
+                num_improvement += 1
+                num_switch += 1
+            if num_switch >= early_switch:
+                current_genome = self.parent_factory()
+                num_switch = 0
+            if num_improvement >= early_stopping:
                 pbar.set_description(f"Early Stop at Gen {generation}")
                 break
 
         # Final output
-        print(f"\nBest fitness achieved: {best_fitness:.4f}")
+        print(f"\nBest Train fitness achieved: {best_train_fitness:.4f}")
+        print(f"\nTest fitness: {best_test_fitness:.4f}")
         print(best_genome.to_function_string())
-        self.plot_fitness_convergence(fitness_history,mean_std_history)
+        self.plot_fitness_convergence(fitness_history)
         best_genome.visualize_active_graph()
-        self.log_run_result(best_genome, best_fitness, generation,project_name, log_dir="Results")
+        self.log_run_result(best_genome, best_test_fitness, generation,project_name, log_dir="Results")
+        self.plot_feature_usage(feature_usage_over_time)
         return best_genome
        
-    def plot_fitness_convergence(self, fitness_history,mean_std_history):
-        evaluations, best_fitnesses = zip(*fitness_history)
-        generations, means, stds = zip(*mean_std_history)
+    def plot_fitness_convergence(self, fitness_history):
+        evaluations, best_train_fitnesses,best_test_fitnesses = zip(*fitness_history)
 
         plt.figure(figsize=(10, 6))
-        plt.plot(evaluations, best_fitnesses, label='Best-so-Far Fitness', color='blue', linewidth=1.5)
-        plt.plot(generations, means, label='Mean Fitness per evaluation', color='orange', linestyle='--')
-        plt.fill_between(generations,
-                        np.array(means) - np.array(stds),
-                        np.array(means) + np.array(stds),
-                        color='orange', alpha=0.2, label='±1 Std Dev')
-
+        plt.plot(evaluations, best_train_fitnesses, label='Best-so-Far Train Fitness', color='blue', linewidth=1.5)
+        plt.plot(evaluations, best_test_fitnesses, label='Test Fitness (of Best Train)', color='green', linestyle='--', linewidth=1.5)
         plt.title('Fitness Convergence Over Evaluations')
         plt.xlabel('Evaluation Count')
         plt.ylabel('Fitness')
+        plt.ylim(-2, 2)
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -144,3 +146,53 @@ class ES: #Evolution strategy
             df_entry.to_csv(log_csv, mode='a', header=False, index=False)
         else:
             df_entry.to_csv(log_csv, index=False)
+
+
+    def get_used_input_features(self,genome):
+        num_inputs = self.config.num_inputs
+        used_inputs = [0] * num_inputs
+        for node in genome.get_active_nodes():
+            for input_idx in node.inputs:
+                if input_idx < num_inputs:  # input node index
+                    used_inputs[input_idx] += 1
+        return used_inputs
+
+
+    def plot_feature_usage(self, feature_usage_over_time, top_n=8):
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        usage_array = np.array(feature_usage_over_time).T  # shape: [n_features, n_generations]
+        generations = list(range(len(feature_usage_over_time)))
+
+        # Step 1: Compute total usage per feature
+        total_usage = usage_array.sum(axis=1)
+
+        # Step 2: Get indices of top N features
+        top_indices = np.argsort(total_usage)[-top_n:][::-1]  # descending order
+
+        # Step 3: Line plot for top features
+        plt.figure(figsize=(12, 6))
+        for i in top_indices:
+            plt.plot(generations, usage_array[i], label=f'Feature {i}')
+        plt.xlabel("Generation")
+        plt.ylabel("Usage Count")
+        plt.title(f"Top {top_n} Feature Usage Over Time")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        # Step 4: Correlation heatmap for top features
+        df_usage = pd.DataFrame(usage_array[top_indices].T, columns=[f"Feature_{i}" for i in top_indices])
+        df_diff = df_usage.diff().dropna()
+        corr = df_diff.corr()
+
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", square=True)
+        plt.title(f"Correlation of Top {top_n} Feature Usage Changes")
+        plt.tight_layout()
+        plt.show()
+

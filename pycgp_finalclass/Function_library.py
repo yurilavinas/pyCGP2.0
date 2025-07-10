@@ -134,3 +134,4 @@ def f_sin(args, const_params):
         return math.sin(args[0])
     except:
         return 0.0
+

@@ -45,7 +45,7 @@ class Binary_Regressor(Evaluator):
         self.last_test_r2 = r2_score(y_test_flat, test_preds)
 
         # Return test R² as fitness (higher is better)
-        return self.last_test_r2
+        return self.last_train_r2,self.last_test_r2
 
     def evaluate_cv(self, genome, k=5):
         kf = KFold(n_splits=k, shuffle=True, random_state=42)
@@ -69,7 +69,7 @@ class Binary_Regressor(Evaluator):
         self.last_train_r2 = mean_r2
         self.last_test_r2 = mean_r2  # Optional: could still keep a true test set
 
-        return mean_r2
+        return self.last_train_r2, self.last_test_r2
 
 class Regressor(Evaluator):
 
@@ -111,7 +111,7 @@ class Regressor(Evaluator):
         
         self.last_test_r2 = r2_score(y_test_flat, test_preds, multioutput='uniform_average')
 
-        return self.last_test_r2
+        return self.last_train_r2,self.last_test_r2
 
 
     def evaluate_cv(self, genome, k):
@@ -135,7 +135,7 @@ class Regressor(Evaluator):
         self.last_train_r2 = np.mean(r2_scores)
         self.last_test_r2 = self.last_train_r2  # Optional
 
-        return self.last_train_r2
+        return self.last_train_r2, self.last_test_r2
 
 
 class MultiClassClassifier(Evaluator):
@@ -175,7 +175,7 @@ class MultiClassClassifier(Evaluator):
         y_test_flat = np.array(self.y_test).flatten()
         self.last_test_accuracy = accuracy_score(y_test_flat, test_preds)
 
-        return self.last_test_accuracy
+        return self.last_train_accuracy ,self.last_test_accuracy 
 
     def evaluate_cv(self, genome, k):
         kf = KFold(n_splits=k, shuffle=True, random_state=42)
@@ -202,18 +202,18 @@ class MultiClassClassifier(Evaluator):
         self.last_train_accuracy = mean_acc
         self.last_test_accuracy = mean_acc  # Optional
 
-        return mean_acc
+        return self.last_train_accuracy, self.last_test_accuracy
 
 
 class EvaluatorSin(Evaluator): #Evaluator for the sin function
-    def __init__(self, input_range=(-1, 1), num_points=100):
+    def __init__(self, input_range=(-3, 3), num_points=100):
         self.inputs = np.linspace(input_range[0], input_range[1], num_points) #Generate 100 points between -1 and 1
         self.targets = np.sin(self.inputs)
 
 
     def evaluate(self, genome):
         predictions = [genome.get_value([x])[0] for x in self.inputs] 
-
+        predictions = np.clip(predictions, -10, 10)
         from sklearn.metrics import r2_score
 
         r2 = r2_score(self.targets, predictions)
@@ -259,7 +259,7 @@ class Binary_Classifier(Evaluator):
         self.last_test_accuracy = accuracy_score(y_test_flat, test_preds)
 
 
-        return self.last_test_accuracy  # Use test accuracy as fitness '''
+        return self.last_train_accuracy,self.last_test_accuracy   # Use test accuracy as fitness '''
     
 
     def evaluate_cv(self, genome, k):
@@ -292,5 +292,16 @@ class Binary_Classifier(Evaluator):
         self.last_train_accuracy = mean_acc  # We use training data split for cross-val, so this becomes our new metric
         self.last_test_accuracy = self.last_train_accuracy  # Optional: could still keep a separate real test set
 
-        return self.last_train_accuracy   
+        return self.last_train_accuracy, self.last_test_accuracy
     
+    def predict(self, genome, on="test"):
+        """
+        Returns predicted labels from the genome on the test or train set.
+        """
+        X = self.X_test if on == "test" else self.X_train
+        preds = []
+        for x in X:
+            output_value = genome.get_value(x)[0]
+            predicted = 1 if output_value > self.threshold else 0
+            preds.append(predicted)
+        return np.array(preds).flatten()
