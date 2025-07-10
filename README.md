@@ -77,3 +77,8 @@ aminus(gt(acos(sqrtxy(x1, x3)), x2), x2)
 
 ![image](https://github.com/user-attachments/assets/3ec5ae0a-fe9c-4727-865c-0b28a4b20888)
 
+
+## Test
+
+To access the test on audiometric data [Complete_dataset.ipynb](./Complete_dataset.ipynb).
+
