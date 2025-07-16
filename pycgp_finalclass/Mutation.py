@@ -17,6 +17,12 @@ class Golden_mutation(Mutation):
 
 
     def mutate(self, genome):
+
+        def snapshot_structure(genome):
+            return [
+                (n.index, n.Func.name, tuple(n.inputs), tuple(getattr(n, 'constants', [])))
+                for n in genome.get_active_nodes()
+            ]
         # Chance of mutating output
         if random.random() < self.output_node_mutation_rate:
             self.mutate_outputs(genome)
@@ -26,6 +32,7 @@ class Golden_mutation(Mutation):
             node = random.choice(genome.nodes)
             node_index = node.index
 
+            active_before = snapshot_structure(genome)
             # Apply one mutation
             r = random.random()
             if r < self.function_mutation_rate:
@@ -35,8 +42,9 @@ class Golden_mutation(Mutation):
             else:
                 node.mutate_constants(self.config.const_min, self.config.const_max)
 
-            # If the mutated node is active, we stop
-            if node_index in {n.index for n in genome.get_active_nodes()}:
+            active_after = snapshot_structure(genome)
+
+            if node_index in {n.index for n in genome.get_active_nodes()} and active_before != active_after:
                 break
 
 

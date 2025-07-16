@@ -29,7 +29,10 @@ class Node:
     #Select a new function from the list and change the arity depending on it
     def mutate_function(self,function_set,node_index):    
         old_func = self.Func
-        new_func = random.choice(function_set)
+        available_funcs = [f for f in function_set if f != old_func]
+        if not available_funcs:
+            return  # Edge case: only one function in set
+        new_func = random.choice(available_funcs)
         self.Func = new_func
         if new_func.arity > old_func.arity: #mutation sur fonction doit garder les memes input
             self.inputs.extend([random.randint(0, node_index-1) for _ in range(new_func.arity - old_func.arity)])
@@ -45,10 +48,17 @@ class Node:
         max_index = node_index - 1  # Only use past inputs or earlier nodes
         for i in range(len(self.inputs)):
             if random.random() < input_node_mutation_rate:
-                if max_index < num_inputs:  # no previous nodes
-                    self.inputs[i] = random.randint(0, num_inputs - 1)
-                else:
-                    self.inputs[i] = random.randint(num_inputs, max_index)
+                old_input = self.inputs[i]
+                attempts = 0
+                while True:
+                    if max_index < num_inputs:
+                        new_input = random.randint(0, num_inputs - 1)
+                    else:
+                        new_input = random.randint(num_inputs, max_index)
+                    if new_input != old_input or attempts > 10:
+                        break
+                    attempts += 1
+                self.inputs[i] = new_input
 
 
     def mutate_constants(self,const_min,const_max): #choose new random constant in the range

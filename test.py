@@ -77,7 +77,10 @@ def y(X):
 # Génome de test
 @pytest.fixture
 def sample_genome(config):
-    return CGPGenome.create_genome(config)
+    return lambda: CGPGenome.create_genome(config)
+@pytest.fixture
+def concrete_genome(sample_genome):
+    return sample_genome()
 
 # Mutation
 @pytest.fixture
@@ -93,11 +96,11 @@ def evaluator(X, y):
 
 # Evolution Strategy
 @pytest.fixture
-def sample_es(evaluator, mutation,config):
+def sample_es(evaluator,sample_genome, mutation,config):
     return ES(
         evaluator=evaluator,
         lam=4,
-        parent_factory= lambda: CGPGenome.create_genome(config),
+        parent_factory= sample_genome,
         mutation=mutation,
         config=config
     )
@@ -106,24 +109,25 @@ def sample_es(evaluator, mutation,config):
 # TESTS Regression
 # -------------------
 
-def test_genome_is_valid(sample_genome,config):
-    assert isinstance(sample_genome, CGPGenome)
-    assert len(sample_genome.nodes) == config.num_nodes
-    assert isinstance(sample_genome.outputs, list)
+def test_genome_is_valid(concrete_genome,config):
+    assert isinstance(concrete_genome, CGPGenome)
+    assert len(concrete_genome.nodes) == config.num_nodes
+    assert isinstance(concrete_genome.outputs, list)
 
-def test_mutation_changes_genome(sample_genome, mutation):
-    original = sample_genome.copy()
-    mutation.mutate(sample_genome)
-    assert original != sample_genome, "Mutation did not change the genome"
+def test_mutation_changes_genome(concrete_genome, mutation):
+    original = concrete_genome.copy()
+    mutation.mutate(concrete_genome)
+    assert original != concrete_genome, "Mutation did not change the genome"
 
-def test_Regressor_returns_score(evaluator, sample_genome):
-    score = evaluator.evaluate(sample_genome)
+def test_Regressor_returns_score(evaluator, concrete_genome):
+    score = evaluator.evaluate(concrete_genome)[0]
     assert isinstance(score, float)
     assert score <= 1.0
 
 def test_es_process(sample_es,evaluator):
-    first_genome = sample_es.parent.copy()
-    best_genome = sample_es.evolve(n_generations=100, early_stopping=100, verbose=False)
+    parent = sample_es.parent_factory()
+    first_genome = parent.copy()
+    best_genome = sample_es.evolve(n_generations=100, early_stopping=100,early_switch=100, verbose=False)
     assert best_genome is not None
     assert evaluator.evaluate(best_genome) > evaluator.evaluate(first_genome)
 
@@ -146,30 +150,41 @@ def evaluator2(X, y2):
 
 # Evolution Strategy
 @pytest.fixture
-def sample_es2(sample_genome, evaluator2, mutation):
+def sample_es2(evaluator2,sample_genome, mutation,config):
     return ES(
         evaluator=evaluator2,
         lam=4,
-        parent=sample_genome,
+        parent_factory= sample_genome,
         mutation=mutation,
+        config=config
     )
 # -------------------
 # TESTS Classification
 
 
-def test_Classification_returns_accuracy(evaluator2, sample_genome):
-    accuracy = evaluator2.evaluate(sample_genome)
+def test_Classification_returns_accuracy(evaluator2, concrete_genome):
+    accuracy = evaluator2.evaluate(concrete_genome)[0]
     assert isinstance(accuracy, float)
     assert 0.0 <= accuracy <= 1.0
 
 def test_es_process_classification(sample_es2, evaluator2):
-    first_genome = sample_es2.parent.copy()
-    best_genome = sample_es2.evolve(n_generations=100, early_stopping=100, verbose=False)
+    parent = sample_es2.parent_factory()
+    first_genome = parent.copy()
+    best_genome = sample_es2.evolve(n_generations=100, early_stopping=100,early_switch=100, verbose=False)
     assert best_genome is not None
     assert evaluator2.evaluate(best_genome) > evaluator2.evaluate(first_genome)
 
-def test_mutation_changes_genome(sample_genome, mutation):
-    original_active = {node.index for node in sample_genome.get_active_nodes()}
-    mutation.mutate(sample_genome)
-    new_active = {node.index for node in sample_genome.get_active_nodes()}
-    assert original_active != new_active, "Mutation did not change the genome in classification"
+def test_mutation_changes_structure(concrete_genome, mutation):
+    def snapshot(genome):
+        return [
+            (n.index, n.Func.name, tuple(n.inputs), tuple(getattr(n, 'constants', [])))
+            for n in genome.get_active_nodes()
+        ]
+
+    before = snapshot(concrete_genome)
+    mutation.mutate(concrete_genome)
+    after = snapshot(concrete_genome)
+
+    assert before != after, "Mutation did not change the structure of active nodes"
+
+ 
