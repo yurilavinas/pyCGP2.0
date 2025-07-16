@@ -21,7 +21,6 @@ class Golden_mutation(Mutation):
         if random.random() < self.output_node_mutation_rate:
             self.mutate_outputs(genome)
 
-        active_node_indices = {node.index for node in genome.get_active_nodes()}
 
         while True:
             node = random.choice(genome.nodes)
@@ -37,7 +36,7 @@ class Golden_mutation(Mutation):
                 node.mutate_constants(self.config.const_min, self.config.const_max)
 
             # If the mutated node is active, we stop
-            if node_index in active_node_indices:
+            if node_index in {n.index for n in genome.get_active_nodes()}:
                 break
 
 

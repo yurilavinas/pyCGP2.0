@@ -93,12 +93,13 @@ def evaluator(X, y):
 
 # Evolution Strategy
 @pytest.fixture
-def sample_es(sample_genome, evaluator, mutation):
+def sample_es(evaluator, mutation,config):
     return ES(
         evaluator=evaluator,
         lam=4,
-        parent=lambda: sample_genome,
+        parent_factory= lambda: CGPGenome.create_genome(config),
         mutation=mutation,
+        config=config
     )
 
 # -------------------
@@ -166,3 +167,9 @@ def test_es_process_classification(sample_es2, evaluator2):
     best_genome = sample_es2.evolve(n_generations=100, early_stopping=100, verbose=False)
     assert best_genome is not None
     assert evaluator2.evaluate(best_genome) > evaluator2.evaluate(first_genome)
+
+def test_mutation_changes_genome(sample_genome, mutation):
+    original_active = {node.index for node in sample_genome.get_active_nodes()}
+    mutation.mutate(sample_genome)
+    new_active = {node.index for node in sample_genome.get_active_nodes()}
+    assert original_active != new_active, "Mutation did not change the genome in classification"
