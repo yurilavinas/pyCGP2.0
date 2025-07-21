@@ -23,24 +23,17 @@ class Binary_Regressor(Evaluator):
         self.last_test_r2 = -np.inf
         self.cv = cv  # Whether to use cross-validation
         
-    def safe_predictions(self, preds):
-        preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
-        preds = np.clip(preds, -1e6, 1e6)  # clip to avoid extremely large values
-        return preds
-
     def evaluate(self, genome):
         return self.evaluate_cv(genome, k=5) if self.cv else self.evaluate_no_cv(genome)
 
     def evaluate_no_cv(self, genome):
         # Predict on training set
         train_preds = [genome.get_value(x)[0] for x in self.X_train]
-        train_preds = self.safe_predictions(train_preds)
         y_train_flat = np.array(self.y_train).flatten()
         self.last_train_r2 = r2_score(y_train_flat, train_preds)
 
         # Predict on test set
         test_preds = [genome.get_value(x)[0] for x in self.X_test]
-        test_preds = self.safe_predictions(test_preds)
         y_test_flat = np.array(self.y_test).flatten()
         self.last_test_r2 = r2_score(y_test_flat, test_preds)
 
@@ -54,20 +47,19 @@ class Binary_Regressor(Evaluator):
 
         r2_scores = []
         for train_index, test_index in kf.split(self.X_train):
-            X_fold_train = self.X_train[train_index]
-            y_fold_train = self.y_train[train_index]
             X_fold_test = self.X_train[test_index]
             y_fold_test = self.y_train[test_index]
 
-            fold_preds = [genome.get_value(x)[0] for x in X_fold_test]
-            fold_preds = self.safe_predictions(fold_preds)            
-            y_fold_test = y_fold_test.flatten()
-            r2 = r2_score(y_fold_test, fold_preds)
+            fold_preds = [np.argmax(genome.get_value(x)[0]) for x in X_fold_test]         
+            fold_preds = np.array(fold_preds).flatten()
+            y_fold_test = np.array(y_fold_test).flatten()
+
+            r2 = r2_score(y_fold_test, fold_preds, multioutput='uniform_average')
             r2_scores.append(r2)
 
-        mean_r2 = np.mean(r2_scores)
-        self.last_train_r2 = mean_r2
-        self.last_test_r2 = mean_r2  # Optional: could still keep a true test set
+        score = np.mean(r2_scores)
+        self.last_train_r2 =score
+        self.last_test_r2 = score  # Optional
 
         return self.last_train_r2, self.last_test_r2
 
@@ -122,18 +114,19 @@ class Regressor(Evaluator):
         y = np.array(self.y_train)
 
         for train_idx, test_idx in kf.split(X):
-            X_fold_train, y_fold_train = X[train_idx], y[train_idx]
-            X_fold_test, y_fold_test = X[test_idx], y[test_idx]
+            X_fold_test = X[test_idx]
+            y_fold_test = y[test_idx]
 
-            fold_preds = [genome.get_value(x) for x in X_fold_test]
-            fold_preds = np.array(fold_preds)
-            
-            # Make sure fold_preds and y_fold_test shapes match
+            fold_preds = [np.argmax(genome.get_value(x)) for x in X_fold_test]
+            fold_preds = np.array(fold_preds).flatten()
+            y_fold_test = np.array(y_fold_test).flatten()
+
             r2 = r2_score(y_fold_test, fold_preds, multioutput='uniform_average')
             r2_scores.append(r2)
 
-        self.last_train_r2 = np.mean(r2_scores)
-        self.last_test_r2 = self.last_train_r2  # Optional
+        score = np.mean(r2_scores)
+        self.last_train_r2 =score
+        self.last_test_r2 = score  # Optional
 
         return self.last_train_r2, self.last_test_r2
 
@@ -184,7 +177,6 @@ class MultiClassClassifier(Evaluator):
         y = np.array(self.y_train)
         
         for train_idx, test_idx in kf.split(X):
-            X_fold_train, y_fold_train = X[train_idx], y[train_idx]
             X_fold_test, y_fold_test = X[test_idx], y[test_idx]
 
             fold_preds = []
@@ -205,19 +197,7 @@ class MultiClassClassifier(Evaluator):
         return self.last_train_accuracy, self.last_test_accuracy
 
 
-class EvaluatorSin(Evaluator): #Evaluator for the sin function
-    def __init__(self, input_range=(-3, 3), num_points=100):
-        self.inputs = np.linspace(input_range[0], input_range[1], num_points) #Generate 100 points between -1 and 1
-        self.targets = np.sin(self.inputs)
 
-
-    def evaluate(self, genome):
-        predictions = [genome.get_value([x])[0] for x in self.inputs] 
-        predictions = np.clip(predictions, -10, 10)
-        from sklearn.metrics import r2_score
-
-        r2 = r2_score(self.targets, predictions)
-        return r2
     
 
 class Binary_Classifier(Evaluator):
@@ -267,13 +247,11 @@ class Binary_Classifier(Evaluator):
         accuracies = []
         self.X_train = np.array(self.X_train)
         self.y_train = np.array(self.y_train)
-        self.X_test = np.array(self.X_test)
-        self.y_test = np.array(self.y_test)
-        for fold_idx, (train_index, test_index) in enumerate(kf.split(self.X_train)):
-            X_fold_train = self.X_train[train_index]
-            y_fold_train = self.y_train[train_index]
+
+        for train_index, test_index in kf.split(self.X_train):
             X_fold_test = self.X_train[test_index]
             y_fold_test = self.y_train[test_index]
+
 
             # Predict on the test fold
             fold_preds = []
@@ -290,18 +268,22 @@ class Binary_Classifier(Evaluator):
         # Average accuracy over all folds
         mean_acc = np.mean(accuracies)
         self.last_train_accuracy = mean_acc  # We use training data split for cross-val, so this becomes our new metric
-        self.last_test_accuracy = self.last_train_accuracy  # Optional: could still keep a separate real test set
+        self.last_test_accuracy = mean_acc # Optional: could still keep a separate real test set
 
         return self.last_train_accuracy, self.last_test_accuracy
     
-    def predict(self, genome, on="test"):
-        """
-        Returns predicted labels from the genome on the test or train set.
-        """
-        X = self.X_test if on == "test" else self.X_train
-        preds = []
-        for x in X:
-            output_value = genome.get_value(x)[0]
-            predicted = 1 if output_value > self.threshold else 0
-            preds.append(predicted)
-        return np.array(preds).flatten()
+    
+
+class EvaluatorSin(Evaluator): #Evaluator for the sin function
+    def __init__(self, input_range=(-3, 3), num_points=100):
+        self.inputs = np.linspace(input_range[0], input_range[1], num_points) #Generate 100 points between -1 and 1
+        self.targets = np.sin(self.inputs)
+
+
+    def evaluate(self, genome):
+        predictions = [genome.get_value([x])[0] for x in self.inputs] 
+        predictions = np.clip(predictions, -10, 10)
+        from sklearn.metrics import r2_score
+
+        r2 = r2_score(self.targets, predictions)
+        return r2
